@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bảng Vòng Loại</title>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
+    <style>
+        :root { --p: #1e293b; --a: #2563eb; --s: #10b981; --d: #ef4444; --w: #f59e0b; }
+        body { font-family: 'system-ui', sans-serif; background: #f8fafc; margin: 0; display: flex; flex-direction: column; align-items: center; color: var(--p); }
+        .header { background: var(--p); color: white; width: 100%; text-align: center; padding: 15px 0; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .screen { display: none; width: 95%; max-width: 450px; padding: 15px 5px; animation: fadeIn 0.2s ease; }
+        .active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        /* Menu & Cards */
+        .match-card { background: white; padding: 18px; margin-bottom: 10px; border-radius: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-left: 5px solid var(--a); cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-weight: bold; }
+        
+        /* Bảng điểm công khai */
+        .rank-table { width: 100%; background: white; border-radius: 12px; border-collapse: collapse; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .rank-table th { background: #334155; color: white; padding: 12px; text-align: left; font-size: 0.8em; }
+        .rank-table td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 0.9em; }
+        .rank-table tr:last-child td { border: none; }
+        .score-pill { background: #f1f5f9; padding: 2px 8px; border-radius: 10px; font-weight: bold; color: var(--a); }
+
+        /* Board */
+        .board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; background: #e2e8f0; border: 4px solid var(--p); width: 320px; height: 320px; margin: 15px auto; border-radius: 8px; }
+        .cell { background: white; display: flex; align-items: center; justify-content: center; font-size: 50px; font-weight: 900; cursor: pointer; height: 100px; }
+        .cell.x { color: var(--a); }
+        .cell.o { color: var(--d); }
+
+        .btn { border: none; border-radius: 10px; padding: 14px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 10px; font-size: 1em; }
+        .btn-v { background: var(--w); color: white; }
+        .admin-trigger { position: absolute; right: 10px; top: 15px; background: rgba(255,255,255,0.1); border: 1px solid white; color: white; padding: 5px 10px; border-radius: 6px; font-size: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h2 style="margin:0; font-size: 1.1em;">Giải Đấu Caro 16 Người</h2>
+    <button class="admin-trigger" onclick="openAdmin()">QUẢN TRÒ</button>
+</div>
+
+<div id="scr-menu" class="screen active">
+    <button class="btn btn-v" onclick="openRanking()" style="margin-bottom: 20px; background: #6366f1;">📊 XEM BẢNG ĐIỂM VÒNG LOẠI</button>
+    <p style="text-align:center; font-weight: bold; color: #64748b; font-size: 0.8em;">CHỌN TRẬN ĐẤU CỦA BẠN</p>
+    <div id="match-list"></div>
+</div>
+
+<div id="scr-ranking" class="screen">
+    <h3 style="text-align:center">BẢNG KẾT QUẢ VÒNG LOẠI</h3>
+    <table class="rank-table">
+        <thead>
+            <tr>
+                <th>CẶP ĐẤU</th>
+                <th>TỈ SỐ (XXX)</th>
+                <th>TRẠNG THÁI</th>
+            </tr>
+        </thead>
+        <tbody id="rank-body">
+            </tbody>
+    </table>
+    <button class="btn" style="background:#334155; margin-top:20px; color:white;" onclick="location.reload()">Quay lại Menu</button>
+</div>
+
+<div id="scr-game" class="screen">
+    <div id="role-tag" style="text-align:center; font-size:0.8em; margin-bottom:5px; font-weight:bold; border-radius:20px; padding:4px; color:white;"></div>
+    <div style="background: white; padding: 15px; border-radius: 15px; text-align: center; border: 1px solid #e2e8f0;">
+        <div id="m-name" style="font-weight:bold; color:var(--a); font-size: 1.1em;"></div>
+        <div id="xxx-score" style="font-size: 2.2em; letter-spacing: 12px; font-weight: 800; margin: 10px 0; font-family: monospace;">--- | ---</div>
+        <div id="turn-box" style="padding: 8px; border-radius: 8px; font-weight: bold; font-size: 0.9em;">...</div>
+    </div>
+    <div id="board" class="board"></div>
+    <button id="reset-v" class="btn" style="background:#64748b; color:white; display:none;" onclick="resetBoard()">Hòa / Đánh lại ván</button>
+    <button class="btn" style="background:#334155; color:white;" onclick="location.reload()">Quay lại Menu</button>
+</div>
+
+<div id="scr-admin" class="screen">
+    <h3 style="text-align:center">BẢNG QUẢN TRÒ</h3>
+    <div id="adm-monitor"></div>
+    <button class="btn" style="background:#334155; color:white;" onclick="location.reload()">Đóng Quản Trò</button>
+</div>
+
+<script>
+    const firebaseConfig = { databaseURL: "https://dxzshop-c73de-default-rtdb.asia-southeast1.firebasedatabase.app/" };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const matches = [
+        {id: "m1", p1: "Bùi Nghĩa", k1: "101BN", p2: "Ngọc Hân", k2: "102NH"},
+        {id: "m2", p1: "Khang", k1: "201K", p2: "Mỹ", k2: "202M"},
+        {id: "m3", p1: "Đặng Phúc", k1: "301DP", p2: "Đức", k2: "302D"},
+        {id: "m4", p1: "Hùng", k1: "401H", p2: "Minh Thư", k2: "402MT"},
+        {id: "m5", p1: "Vũ Ngọc", k1: "501VN", p2: "Hậu", k2: "502H"},
+        {id: "m6", p1: "Lê Ý", k1: "601LY", p2: "Nguyễn Phúc", k2: "602NP"},
+        {id: "m7", p1: "Trân", k1: "701T", p2: "Anh Thư", k2: "702AT"},
+        {id: "m8", p1: "Minh", k1: "801M", p2: "Quốc Hùng", k2: "802QH"}
+    ];
+
+    let currentMid = "", myRole = "VIEWER";
+
+    function initMenu() {
+        const container = document.getElementById('match-list');
+        container.innerHTML = "";
+        matches.forEach(m => {
+            const div = document.createElement('div');
+            div.className = 'match-card';
+            div.onclick = () => joinMatch(m);
+            div.innerHTML = `<span>${m.p1} vs ${m.p2}</span> <span>➔</span>`;
+            container.appendChild(div);
+        });
+    }
+
+    // CHỨC NĂNG MỚI: XEM BẢNG ĐIỂM CÔNG KHAI
+    function openRanking() {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById('scr-ranking').classList.add('active');
+        const body = document.getElementById('rank-body');
+        
+        db.ref('matches').on('value', snap => {
+            const allData = snap.val() || {};
+            body.innerHTML = "";
+            matches.forEach(m => {
+                const d = allData[m.id] || { sw: {X:0, O:0}, board: Array(9).fill("") };
+                const isPlaying = d.board.some(v => v !== "");
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><b>${m.p1}</b> - <b>${m.p2}</b></td>
+                    <td><span class="score-pill">${d.sw.X} - ${d.sw.O}</span></td>
+                    <td style="color:${isPlaying ? 'green' : '#94a3b8'}">${isPlaying ? '● Đang đánh' : 'Đang chờ'}</td>
+                `;
+                body.appendChild(row);
+            });
+        });
+    }
+
+    function joinMatch(m) {
+        currentMid = m.id;
+        const mode = confirm(`Trận: ${m.p1} vs ${m.p2}\n\n- OK: NHẬP MÃ ĐỂ ĐẤU\n- CANCEL: VÀO XEM`);
+        if (mode) {
+            const code = prompt("Nhập mã bí mật của bạn:");
+            if (code === m.k1) { myRole = "X"; alert("Chào " + m.p1 + "!"); }
+            else if (code === m.k2) { myRole = "O"; alert("Chào " + m.p2 + "!"); }
+            else { alert("Mã sai! Quyền XEM."); myRole = "VIEWER"; }
+        } else { myRole = "VIEWER"; }
+        renderGame(m);
+    }
+
+    function renderGame(m) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById('scr-game').classList.add('active');
+        document.getElementById('m-name').innerText = m.p1 + " VS " + m.p2;
+        const tag = document.getElementById('role-tag');
+        tag.innerText = myRole === "VIEWER" ? "BẠN ĐANG XEM" : "BẠN LÀ NGƯỜI CHƠI: " + myRole;
+        tag.style.background = myRole === "VIEWER" ? "var(--w)" : "var(--s)";
+        document.getElementById('reset-v').style.display = myRole === "VIEWER" ? "none" : "block";
+        const boardDiv = document.getElementById('board');
+        boardDiv.innerHTML = "";
+        for(let i=0; i<9; i++) {
+            const c = document.createElement('div');
+            c.className = 'cell';
+            c.onclick = () => handlePlay(i);
+            boardDiv.appendChild(c);
+        }
+        syncFirebase();
+    }
+
+    function syncFirebase() {
+        db.ref('matches/' + currentMid).on('value', snap => {
+            const d = snap.val() || { board: Array(9).fill(""), turn: "X", sw: {X:0, O:0} };
+            const cells = document.getElementsByClassName('cell');
+            d.board.forEach((v, i) => {
+                cells[i].innerText = v;
+                cells[i].className = 'cell ' + (v ? v.toLowerCase() : '');
+            });
+            document.getElementById('xxx-score').innerText = `${"X".repeat(d.sw.X).padEnd(3, "-")} | ${"O".repeat(d.sw.O).padEnd(3, "-")}`;
+            const tb = document.getElementById('turn-box');
+            const isMe = d.turn === myRole;
+            tb.innerText = isMe ? "LƯỢT BẠN!" : "LƯỢT: " + d.turn;
+            tb.style.background = isMe ? "#dbeafe" : "#f1f5f9";
+            tb.style.color = isMe ? "var(--a)" : "#64748b";
+        });
+    }
+
+    function handlePlay(i) {
+        if (myRole === "VIEWER") return;
+        const ref = db.ref('matches/' + currentMid);
+        ref.once('value', snap => {
+            const d = snap.val() || { board: Array(9).fill(""), turn: "X", sw: {X:0, O:0} };
+            if (d.turn !== myRole || d.board[i] !== "") return;
+            d.board[i] = myRole;
+            if (checkWin(d.board, myRole)) {
+                d.sw[myRole]++;
+                if (d.sw[myRole] >= 3) alert("KẾT THÚC: BẠN THẮNG CHUNG CUỘC!");
+                else alert("Thắng ván này!");
+                ref.set({ board: Array(9).fill(""), turn: "X", sw: d.sw });
+            } else {
+                ref.update({ board: d.board, turn: myRole === "X" ? "O" : "X" });
+            }
+        });
+    }
+
+    function checkWin(b, s) {
+        const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+        return lines.some(l => l.every(idx => b[idx] === s));
+    }
+
+    function resetBoard() {
+        if(confirm("Xác nhận Reset ván này?")) db.ref('matches/' + currentMid + '/board').set(Array(9).fill(""));
+    }
+
+    function openAdmin() {
+        if (prompt("Mã Quản Trò:") !== "SavageJacob70") return;
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById('scr-admin').classList.add('active');
+        const mon = document.getElementById('adm-monitor');
+        db.ref('matches').on('value', snap => {
+            const all = snap.val() || {};
+            mon.innerHTML = "";
+            matches.forEach(m => {
+                const d = all[m.id] || { sw: {X:0, O:0} };
+                const div = document.createElement('div');
+                div.style.cssText = "background:white; padding:10px; margin-bottom:5px; border-radius:10px; border:1px solid #ddd; font-size:0.8em;";
+                div.innerHTML = `
+                    <div style="display:flex; justify-content:space-between">
+                        <b>${m.p1} (${m.k1}) - ${m.p2} (${m.k2})</b>
+                        <b>${d.sw.X}-${d.sw.O}</b>
+                    </div>
+                    <div style="margin-top:5px; display:flex; gap:5px">
+                        <button onclick="admView('${m.id}')" style="flex:1; cursor:pointer">XEM</button>
+                        <button onclick="admReset('${m.id}')" style="flex:1; cursor:pointer; background:var(--d); color:white; border:none; border-radius:4px">RESET</button>
+                    </div>
+                `;
+                mon.appendChild(div);
+            });
+        });
+    }
+
+    function admView(id) { myRole = "VIEWER"; renderGame(matches.find(m => m.id === id)); }
+    function admReset(id) { if(confirm("Xóa trắng trận này?")) db.ref('matches/' + id).remove(); }
+
+    initMenu();
+</script>
+</body>
+</html>
